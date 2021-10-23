@@ -7,17 +7,20 @@
 
 namespace fs = std::filesystem;
 
-class configuration {
-    // TODO
-};
 
-void* ParseConfiguration(string& configurationFilePath) {
+configuration* ParseConfiguration(string& configurationFilePath) {
     logger_ptr logger = logger_manager::GetInstance()->GetLogger(utils::extractFileName(__FILE__));
     if (!fs::exists(configurationFilePath)) {
         logger->error("File not found: \"{}\"", configurationFilePath);
         return nullptr;
     }
-    return nullptr;
+
+    // TODO wrap in internal lib
+    dict_like_config configurationDict = toml::parse_file(configurationFilePath);
+    logger->info("{}", configurationDict["package"]["name"].value_or(""sv));
+    configuration* parsedConfiguration = configuration::FromDictLike(configurationDict);
+
+    return parsedConfiguration;
 }
 
 
