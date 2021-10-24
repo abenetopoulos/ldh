@@ -5,7 +5,7 @@ COMP?=g++
 BIN?=ldh
 
 all:
-	${COMP} -I ./include --std=${STD} src/main.cpp -o ${BIN}
+	${COMP} -I ./include --std=${STD} src/main.cpp -g -o ${BIN}
 
 clean:
 	rm -f ${BIN}
