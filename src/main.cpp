@@ -22,7 +22,7 @@ int main(int argc, const char* argv[]) {
     std::string configurationFilePath(argv[1]);
 
     auto config = ParseAndCheckConfiguration(configurationFilePath);
-    assert(!config);
+    assert(config);
 
     return 0;
 }
