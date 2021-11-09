@@ -4,8 +4,11 @@ STD?=c++17
 COMP?=g++
 BIN?=ldh
 
-all:
-	${COMP} -I ./include --std=${STD} src/main.cpp -g -o ${BIN}
+release:
+	${COMP} -I ./include --std=${STD} src/main.cpp -o ${BIN}
+
+debug:
+	${COMP} -I ./include --std=${STD} -DDEBUG src/main.cpp -g -o ${BIN}
 
 clean:
 	rm -f ${BIN}

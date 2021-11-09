@@ -14,7 +14,7 @@ void PrintUsageString(const char* binName) {
 }
 
 int main(int argc, const char* argv[]) {
-    logger_ptr logger = logger_manager::GetInstance()->GetLogger(utils::extractFileName(__FILE__));
+    logger_ptr logger = logger_manager::GetInstance()->GetLogger(utils::ExtractFileName(__FILE__));
     PrintUsageString(argv[0]);
 
     // HACK for now, fix once we have argument parsing.
