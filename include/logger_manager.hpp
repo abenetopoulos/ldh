@@ -7,8 +7,12 @@
 
 using namespace std;
 
+const string APPLICATION_LOGGER_NAME = "APP";
+const string USER_LOGGER_NAME = "USR";
+
 typedef spdlog::logger logger_type;
 typedef shared_ptr<logger_type> logger_ptr;
+
 
 class logger_manager{
     public:
@@ -23,7 +27,11 @@ class logger_manager{
 
         logger_ptr CreateComponentLogger(const string& componentName) {
             logger_ptr componentLogger = make_shared<logger_type>(componentName, begin(this->sinks), end(this->sinks));
-            componentLogger->set_pattern("[%^%l%$ - %H:%M:%S%z] %n(tid %t): %v");
+            if (componentName == USER_LOGGER_NAME) {
+                componentLogger->set_pattern("[%^%l%$]: %v");
+            } else {
+                componentLogger->set_pattern("[%^%l%$ - %H:%M:%S%z] %@ (tid %t): %v");
+            }
 
             return componentLogger;
         }

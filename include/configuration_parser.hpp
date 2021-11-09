@@ -109,9 +109,9 @@ struct configuration {
 };
 
 
-bool CheckConfiguration(void*);
-void* ParseConfiguration(char*);
-void* ParseAndCheckConfiguration(char*);
+bool CheckConfiguration(application_context&, void*);
+void* ParseConfiguration(application_context&, char*);
+void* ParseAndCheckConfiguration(application_context&, char*);
 
 #define CONFIGURATION_PARSER_H
 #endif
