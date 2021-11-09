@@ -2,7 +2,7 @@
 #include <iostream>
 
 namespace utils {
-    std::string extractFileName(const char* filePath) {
+    std::string ExtractFileName(const char* filePath) {
         const char* fileName = filePath;
         while (*filePath) {
             if (*filePath++ == '/') {
