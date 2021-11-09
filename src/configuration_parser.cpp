@@ -8,10 +8,9 @@
 namespace fs = std::filesystem;
 
 
-configuration* ParseConfiguration(string& configurationFilePath) {
-    logger_ptr logger = logger_manager::GetInstance()->GetLogger(utils::ExtractFileName(__FILE__));
+configuration* ParseConfiguration(application_context& ctx, string& configurationFilePath) {
     if (!fs::exists(configurationFilePath)) {
-        logger->error("File not found: \"{}\"", configurationFilePath);
+        ctx.applicationLogger->error("File not found: \"{}\"", configurationFilePath);
         return nullptr;
     }
 
@@ -23,15 +22,14 @@ configuration* ParseConfiguration(string& configurationFilePath) {
 }
 
 
-bool CheckConfiguration(configuration* config) {
+bool CheckConfiguration(application_context& ctx, configuration* config) {
     // TODO:
     //  - rules to check.
-    logger_ptr logger = logger_manager::GetInstance()->GetLogger(utils::ExtractFileName(__FILE__));
 
     for (dependency* dep : config->dependencies) {
         if (dep->sourceType == source_type::SOURCE_TYPE_UNKNOWN) {
-            // TODO do not use the default file logger for this.
-            logger->error("Unknown dependency type for dependency \"{}\"", dep->name);
+            // TODO do not use the default file ctx.applicationLogger for this.
+            ctx.userLogger->error("Unknown dependency type for dependency \"{}\"", dep->name);
             return false;
         }
 
@@ -42,20 +40,19 @@ bool CheckConfiguration(configuration* config) {
 }
 
 
-void* ParseAndCheckConfiguration(string& configurationFilePath) {
-    logger_ptr logger = logger_manager::GetInstance()->GetLogger(utils::ExtractFileName(__FILE__));
-    auto config = ParseConfiguration(configurationFilePath);
+configuration* ParseAndCheckConfiguration(application_context& ctx, string& configurationFilePath) {
+    auto config = ParseConfiguration(ctx, configurationFilePath);
 
     if (!config) {
-        logger->error("Could not parse config from input \"{}\"", configurationFilePath);
+        ctx.applicationLogger->error("Could not parse config from input \"{}\"", configurationFilePath);
         return nullptr;
     }
 
-    if (!CheckConfiguration(config)) {
-        logger->error("Configuration check failed, see logs for more information");
+    if (!CheckConfiguration(ctx, config)) {
+        ctx.applicationLogger->error("Configuration check failed, see logs for more information");
         return nullptr;
     }
 
-    logger->info("Config for package \"{}\" OK", config->packageInformation.name);
+    ctx.applicationLogger->info("Config for package \"{}\" OK", config->packageInformation.name);
     return config;
 }

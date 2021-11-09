@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include "application_context.hpp"
 #include "configuration_parser.cpp"
 #include "logger_manager.hpp"
 #include "spdlog/spdlog.h"
@@ -14,14 +15,18 @@ void PrintUsageString(const char* binName) {
 }
 
 int main(int argc, const char* argv[]) {
-    logger_ptr logger = logger_manager::GetInstance()->GetLogger(utils::ExtractFileName(__FILE__));
+    application_context* ctx = new application_context();
+
+    ctx->applicationLogger = logger_manager::GetInstance()->GetLogger(APPLICATION_LOGGER_NAME);
+    ctx->userLogger = logger_manager::GetInstance()->GetLogger(USER_LOGGER_NAME);
+
     PrintUsageString(argv[0]);
 
     // HACK for now, fix once we have argument parsing.
     assert(argc > 1);
     std::string configurationFilePath(argv[1]);
 
-    auto config = ParseAndCheckConfiguration(configurationFilePath);
+    configuration* config = ParseAndCheckConfiguration(*ctx, configurationFilePath);
     assert(config);
 
     return 0;
