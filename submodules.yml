@@ -1,0 +1,10 @@
+- name: tomlplusplus
+  action:
+    type: link-header
+    src: "toml.hpp"
+    dst: "include/toml.hpp"
+- name: spdlog
+  action:
+    type: link-include-dir
+    src: "include/spdlog"
+    dst: "include/spdlog"
