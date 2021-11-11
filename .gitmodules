@@ -1,0 +1,6 @@
+[submodule "tomlplusplus"]
+	path = tomlplusplus
+	url = git@github.com:marzer/tomlplusplus.git
+[submodule "spdlog"]
+	path = spdlog
+	url = git@github.com:gabime/spdlog.git
