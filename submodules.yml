@@ -23,3 +23,6 @@
     - type: link-file
       src: "include/git2.h"
       dst: "include/git2.h"
+    - type: link-include-dir
+      src: "include/git2"
+      dst: "include/git2"

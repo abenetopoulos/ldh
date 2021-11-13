@@ -110,8 +110,8 @@ struct configuration {
 
 
 bool CheckConfiguration(application_context&, void*);
-void* ParseConfiguration(application_context&, char*);
-void* ParseAndCheckConfiguration(application_context&, char*);
+configuration* ParseConfiguration(application_context&, string&);
+configuration* ParseAndCheckConfiguration(application_context&, string&);
 
 #define CONFIGURATION_PARSER_H
 #endif

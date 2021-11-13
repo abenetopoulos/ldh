@@ -1,5 +1,7 @@
 ldh
 libs/
+target/
+include/git2.h
+include/git2
 include/spdlog
 include/toml.hpp
-include/git2.h
