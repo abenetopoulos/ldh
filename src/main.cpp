@@ -2,6 +2,7 @@
 
 #include "application_context.hpp"
 #include "configuration_parser.cpp"
+#include "dependency_resolver.cpp"
 #include "logger_manager.hpp"
 #include "spdlog/spdlog.h"
 
@@ -28,6 +29,12 @@ int main(int argc, const char* argv[]) {
 
     configuration* config = ParseAndCheckConfiguration(*ctx, configurationFilePath);
     assert(config);
+
+    for (dependency* dep: config->dependencies) {
+        if (!Resolve(*ctx, dep)) {
+            ctx->applicationLogger->warn("Resolution of {} failed.", dep->name);
+        }
+    }
 
     return 0;
 }
