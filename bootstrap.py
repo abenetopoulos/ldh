@@ -201,8 +201,12 @@ def bootstrap_project(skip_pre: bool = False):
 
     # NOTE for now, we assume that the specified submodules have been added externally, and
     # we're only concerned with fetching them.
+    submodule_names = [s.get('name') for s in submodules]
+    repo.init_submodules(submodules=submodule_names, overwrite=False)
     repo.update_submodules(
-        submodules=[s.get('name') for s in submodules], init=True, callbacks=PyGitCallbacks(),
+        submodules=[s.get('name') for s in submodules],
+        init=False,
+        callbacks=PyGitCallbacks(),
     )
 
     for submodule in submodules:
