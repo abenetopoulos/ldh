@@ -26,3 +26,8 @@
     - type: link-include-dir
       src: "include/git2"
       dst: "include/git2"
+- name: clipp
+  actions:
+    - type: link-file
+      src: "include/clipp.h"
+      dst: "include/clipp.h"
