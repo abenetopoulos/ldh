@@ -67,12 +67,24 @@ class DependencyActionType(enum.Enum):
     LINK_INCLUDE_DIR = 'link-include-dir'
 
 
+class PyGitCallbacks(pygit2.RemoteCallbacks):
+    def credentials(self, url, username_from_url, allowed_types):
+        if allowed_types & pygit2.credentials.GIT_CREDENTIAL_USERNAME:
+            return pygit2.Username("git")
+        elif allowed_types & pygit2.credentials.GIT_CREDENTIAL_SSH_KEY:
+            return pygit2.Keypair("git", "id_rsa.pub", "id_rsa", "")
+        else:
+            return None
+
+
 _RESET_FLAG = '--clean'
 _SKIP_PRE_FLAG = '--skip-pre'
 # TODO make this configurable
 _CONFIGURATION_FILE_PATH = './submodules.yml'
 
 _GIT_SM_DEINIT_FORMAT_STR = 'git submodule deinit {}'
+
+_SUBMODULE_DIR = 'external-libs'
 
 
 ######################################################
@@ -84,7 +96,6 @@ def execute_shell_commands(commands: List[str], wd: str = None) -> bool:
     """N.b. this was not written with safety in mind! Do not pass arguments that
     have been auto-generated and/or have not been manually inspected!
     """
-
     if wd:
         old_wd = os.getcwd()
         os.chdir(wd)
@@ -139,7 +150,7 @@ def reset_project(skip_pre: bool = False):
         submodule_preamble = submodule.get('pre-remove')
         if submodule_preamble and not skip_pre:
             preamble_result = execute_shell_commands(
-                submodule_preamble, wd=os.path.join(cwd, submodule_name),
+                submodule_preamble, wd=os.path.join(cwd, _SUBMODULE_DIR, submodule_name),
             )
             if not preamble_result:
                 logger.error(f'Removal preamble for dependency {submodule_name} failed, skipping')
@@ -191,7 +202,7 @@ def bootstrap_project(skip_pre: bool = False):
     # NOTE for now, we assume that the specified submodules have been added externally, and
     # we're only concerned with fetching them.
     repo.update_submodules(
-        submodules=[s.get('name') for s in submodules], init=True,
+        submodules=[s.get('name') for s in submodules], init=True, callbacks=PyGitCallbacks(),
     )
 
     for submodule in submodules:
@@ -203,7 +214,7 @@ def bootstrap_project(skip_pre: bool = False):
         submodule_preamble = submodule.get('pre-install')
         if submodule_preamble and not skip_pre:
             preamble_result = execute_shell_commands(
-                submodule_preamble, wd=os.path.join(cwd, submodule_name)
+                submodule_preamble, wd=os.path.join(cwd, _SUBMODULE_DIR, submodule_name)
             )
             if not preamble_result:
                 logger.error(f'Preamble for dependency {submodule_name} failed, skipping')
@@ -224,7 +235,7 @@ def bootstrap_project(skip_pre: bool = False):
                 )
                 break
 
-            relative_dependency_src = os.path.join(submodule.get('name'), submodule_action.get('src'))
+            relative_dependency_src = os.path.join(_SUBMODULE_DIR, submodule.get('name'), submodule_action.get('src'))
             absolute_dependency_src = os.path.join(cwd, relative_dependency_src)
             relative_dependency_dst = os.path.join(submodule_action.get('dst'))
             absolute_dependency_dst = os.path.join(cwd, relative_dependency_dst)
