@@ -21,7 +21,7 @@ bool ResolveGitDependency(application_context& ctx, dependency* dep) {
     // path format is $PWD/target/dependencies/name-version
     // C++ yuck coming up
     std::ostringstream targetDirectoryNameStream;
-    targetDirectoryNameStream << dep->name << "-" << dep->version;
+    targetDirectoryNameStream << dep->name << "-" << dep->inputDependency.version;
     std::string targetDirectoryName = targetDirectoryNameStream.str();
 
     std::ostringstream targetDirectoryPathStream;
@@ -37,15 +37,15 @@ bool ResolveGitDependency(application_context& ctx, dependency* dep) {
     }
 
     bool resolutionSuccessful = false;
-    switch (dep->versionType) {
+    switch (dep->inputDependency.versionType) {
         case (version_type::VERSION_TYPE_DEFAULT):
             {
-                resolutionSuccessful = CloneRepo(ctx, dep->source, targetDirectoryPath);
+                resolutionSuccessful = CloneRepo(ctx, dep->inputDependency.source, targetDirectoryPath);
                 break;
             }
         default:
             {
-                resolutionSuccessful = CloneAndCheckout(ctx, dep->source, targetDirectoryPath, dep->version);
+                resolutionSuccessful = CloneAndCheckout(ctx, dep->inputDependency.source, targetDirectoryPath, dep->inputDependency.version);
                 break;
             }
     }
@@ -69,14 +69,14 @@ bool Resolve(application_context& ctx, dependency* dep) {
         return false;
     }
 
-    switch (dep->sourceType) {
+    switch (dep->inputDependency.sourceType) {
         case (source_type::SOURCE_TYPE_GIT):
             {
                 return ResolveGitDependency(ctx, dep);
             }
         default:
             {
-                ctx.applicationLogger->warn("Unsupported source type {}, ignoring.", dep->sourceType);
+                ctx.applicationLogger->warn("Unsupported source type {}, ignoring.", dep->inputDependency.sourceType);
                 break;
             }
     }
