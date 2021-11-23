@@ -6,10 +6,11 @@
 
 #if !defined(DEPENDENCY_RESOLVER_H)
 #include "application_context.hpp"
-#include "configuration_parser.hpp"
+#include "configuration_io.hpp"
 #include "utils.hpp"
 
 bool Resolve(application_context&, dependency*);
+vector<dependency*>* FilterUnmodified(application_context&, vector<dependency*>&);
 
 #define DEPENDENCY_RESOLVER_H
 #endif

@@ -2,7 +2,7 @@
 
 #include "application_context.hpp"
 #include "command_line.cpp"
-#include "configuration_parser.cpp"
+#include "configuration_io.cpp"
 #include "dependency_resolver.cpp"
 #include "logger_manager.hpp"
 #include "spdlog/spdlog.h"
