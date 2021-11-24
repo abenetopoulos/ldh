@@ -33,20 +33,47 @@ int main(int argc, char* argv[]) {
 
     if (ctx->args->currentMode == mode::MODE_HELP) {
         PrintManPage(*ctx);
-        return 1;
+        return 0;
     }
 
-    configuration* config = ParseAndCheckConfiguration(*ctx, ctx->args->configurationFilePath);
+    if (ctx->args->lockFilePath.empty()) {
+        // FIXME move somewhere else
+        std::string sourceString = ctx->args->configurationFilePath;
+        size_t substringIndex = 0;
+        size_t lastIndex = 0;
+
+        // locate index of last backslash
+        // NOTE this is platform dependent.
+        while ((substringIndex = sourceString.find('/', substringIndex)) != string::npos) {
+            lastIndex = substringIndex++;
+        }
+
+        ctx->args->lockFilePath = sourceString.replace(sourceString.begin() + lastIndex, sourceString.end(), "/ldh.lock");
+    }
+
+    configuration_modes mode = configuration_modes::CONFIGURATION_MODE_INPUT | (
+            ctx->args->currentMode == mode::MODE_VALIDATE ? configuration_modes::CONFIGURATION_MODE_NONE : configuration_modes::CONFIGURATION_MODE_OUTPUT );
+
+    configuration* config = ParseAndCheckConfiguration(*ctx, ctx->args->configurationFilePath, mode);
     assert(config);
 
     if (ctx->args->currentMode == mode::MODE_VALIDATE) {
         return 0;
     }
 
-    for (dependency* dep: config->dependencies) {
+    ctx->applicationLogger->info("will resolve");
+    // vector<dependency*>* dependenciesToResolve = FilterUnmodified(*ctx, config->dependencies);
+    vector<dependency*>* dependenciesToResolve = &config->dependencies;
+    for (dependency* dep: *dependenciesToResolve) {
         if (!Resolve(*ctx, dep)) {
             ctx->applicationLogger->warn("Resolution of \"{}\" failed.", dep->name);
         }
+    }
+
+    if (!WriteConfiguration(*ctx, ctx->args->lockFilePath, config)) {
+        ctx->applicationLogger->error("Failed while writing lock file to \"{}\"", ctx->args->lockFilePath);
+
+        return 1;
     }
 
     return 0;

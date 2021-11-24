@@ -8,6 +8,11 @@
 namespace fs = std::filesystem;
 
 
+/***************************************************
+ * Input
+ ***************************************************/
+
+
 void configuration::ParsePackageSection(section packageSection) {
     // TODO consider moving inside `package_information`
     this->packageInformation.name = packageSection["name"].value_or(""sv);
@@ -58,7 +63,7 @@ void configuration::ParseDependenciesSection(section dependenciesSection) {
 }
 
 
-configuration* ParseConfiguration(application_context& ctx, string& configurationFilePath) {
+configuration* ParseConfiguration(application_context& ctx, string& configurationFilePath, configuration_modes mode) {
     if (!fs::exists(configurationFilePath)) {
         ctx.applicationLogger->error("File not found: \"{}\"", configurationFilePath);
         return nullptr;
@@ -72,7 +77,7 @@ configuration* ParseConfiguration(application_context& ctx, string& configuratio
 }
 
 
-bool CheckConfiguration(application_context& ctx, configuration* config) {
+bool CheckConfiguration(application_context& ctx, configuration* config, configuration_modes mode) {
     // TODO:
     //  - rules to check.
 
@@ -90,19 +95,55 @@ bool CheckConfiguration(application_context& ctx, configuration* config) {
 }
 
 
-configuration* ParseAndCheckConfiguration(application_context& ctx, string& configurationFilePath) {
-    auto config = ParseConfiguration(ctx, configurationFilePath);
+configuration* ParseAndCheckConfiguration(application_context& ctx, string& configurationFilePath, configuration_modes mode) {
+    auto config = ParseConfiguration(ctx, configurationFilePath, mode);
 
     if (!config) {
         ctx.applicationLogger->error("Could not parse config from input \"{}\"", configurationFilePath);
         return nullptr;
     }
 
-    if (!CheckConfiguration(ctx, config)) {
+    if (!CheckConfiguration(ctx, config, mode)) {
         ctx.applicationLogger->error("Configuration check failed, see logs for more information");
         return nullptr;
     }
 
     ctx.applicationLogger->info("Config for package \"{}\" OK", config->packageInformation.name);
     return config;
+}
+
+
+/***************************************************
+ * Output
+ ***************************************************/
+
+
+toml::table DependencyToTable(dependency* dep) {
+    toml::table result;
+
+    result.insert("name", dep->name);
+    result.insert("version", dep->lockDependency.resolvedVersion);
+    result.insert("source", dep->lockDependency.resolvedSource);
+
+    return result;
+}
+
+
+bool WriteConfiguration(application_context& ctx, string& outputPath, configuration* config) {
+    toml::table outputTable;
+
+    toml::array packagesArray;
+    for (dependency* dep : config->dependencies) {
+        packagesArray.push_back(DependencyToTable(dep));
+    }
+    outputTable.insert("packages", packagesArray);
+
+    // NOTE it would be worth it to add a "package" section to the lock file.
+
+    ofstream outputStream;
+    outputStream.open(outputPath);
+    outputStream << outputTable;
+    outputStream.close();
+
+    return true;
 }

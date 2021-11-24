@@ -48,12 +48,14 @@ struct input_dependency {
     string version;
 };
 
+
 struct lock_dependency {
     string localPath;
     string resolvedSource;
+    string resolvedVersion;
 
     bool has_value() {
-        return !(this->localPath.empty() && this->resolvedSource.empty());
+        return !(this->localPath.empty() && this->resolvedSource.empty() && this->resolvedVersion.empty());
     }
 };
 

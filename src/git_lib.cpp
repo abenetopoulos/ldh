@@ -24,9 +24,23 @@ bool ShutdownLibrary(application_context& ctx) {
 }
 
 
-repository* CloneRepo(application_context& ctx, std::string remoteUrl, std::string path) {
+string GetHeadId(application_context& ctx, git_repository* repo) {
+    git_oid commitObjectId;
+
+    int libError = git_reference_name_to_id(&commitObjectId, repo, "HEAD");
+    LIB_ERROR_CHECK(ctx.applicationLogger, "get HEAD id", libError, "");
+
+    return git_oid_tostr_s(&commitObjectId);
+}
+
+
+resolution_result* CloneRepo(application_context& ctx, std::string remoteUrl, std::string path) {
+    resolution_result* rs = new resolution_result(false);
+    rs->localPath = path;
+    rs->remote = remoteUrl;
+
     if (!InitializeLibrary(ctx)) {
-        return NULL;
+        return rs;
     }
 
     ctx.applicationLogger->debug("Attempting to clone from remote \"{}\" into \"{}\"", remoteUrl, path);
@@ -39,14 +53,16 @@ repository* CloneRepo(application_context& ctx, std::string remoteUrl, std::stri
                               remoteUrl, path);
         ctx.userLogger->error("Reason: {}", git_error_last()->message);
 
-        return NULL;
+        return rs;
     }
 
-    repository *result = new repository(out, path);
+    rs->repo = new repository(out, path);
+    rs->version = GetHeadId(ctx, rs->repo->libRepository);
 
     ShutdownLibrary(ctx);
 
-    return result;
+    rs->resolutionSuccessful = true;
+    return rs;
 }
 
 
@@ -56,84 +72,86 @@ repository* GetRepositoryAtPath(std::string path) {
 }
 
 
-bool Checkout(application_context& ctx, repository* repo, std::string tag) {
+void Checkout(application_context& ctx, resolution_result* rs, std::string tag) {
     // FIXME the following is terrible from a readability perspective...
-    ctx.applicationLogger->debug("Attempting to checkout tag \"{}\" for \"{}\"", tag, repo->path);
+    ctx.applicationLogger->debug("Attempting to checkout tag \"{}\" for \"{}\"", tag, rs->repo->path);
     // TODO repo consistency checks.
 
     git_reference *ref;
     git_annotated_commit *checkoutTarget = NULL;
     const char* tagCStr = tag.c_str();
 
-    int operationError = git_reference_dwim(&ref, repo->libRepository, tagCStr);
+    rs->resolutionSuccessful = false;
+
+    int operationError = git_reference_dwim(&ref, rs->repo->libRepository, tagCStr);
     if (operationError) {
         git_object *obj;
-        operationError = git_revparse_single(&obj, repo->libRepository, tagCStr);
+        operationError = git_revparse_single(&obj, rs->repo->libRepository, tagCStr);
 
         if (operationError) {
             ctx.userLogger->error("Failed to find tag \"{}\" for repository at \"{}\"",
-                                  tag, repo->path);
+                                  tag, rs->repo->path);
 
-            return false;
+            return;
         }
 
-        git_annotated_commit_lookup(&checkoutTarget, repo->libRepository, git_object_id(obj));
+        git_annotated_commit_lookup(&checkoutTarget, rs->repo->libRepository, git_object_id(obj));
         git_object_free(obj);
     } else {
-        git_annotated_commit_from_ref(&checkoutTarget, repo->libRepository, ref);
+        git_annotated_commit_from_ref(&checkoutTarget, rs->repo->libRepository, ref);
         git_reference_free(ref);
     }
 
     git_commit* targetCommit = NULL;
-    operationError = git_commit_lookup(&targetCommit, repo->libRepository,
+    operationError = git_commit_lookup(&targetCommit, rs->repo->libRepository,
                                        git_annotated_commit_id(checkoutTarget));
     git_commit_free(targetCommit);
     if (operationError) {
         ctx.applicationLogger->error("Lookup for commit that corresponds to tag \"{}\" failed", tag);
         ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
 
-        return false;
+        return;
     }
 
-    operationError = git_checkout_tree(repo->libRepository, (const git_object *) targetCommit, NULL);
+    operationError = git_checkout_tree(rs->repo->libRepository, (const git_object *) targetCommit, NULL);
     if (operationError) {
         ctx.userLogger->error("Failed while trying to checkout \"{}\" for repository at \"{}\"",
-                              tag, repo->path);
+                              tag, rs->repo->path);
         ctx.userLogger->error("Reason: {}", git_error_last()->message);
 
-        return false;
+        return;
     }
 
     if (!git_annotated_commit_ref(checkoutTarget)) {
-        operationError = git_repository_set_head_detached_from_annotated(repo->libRepository, checkoutTarget);
+        operationError = git_repository_set_head_detached_from_annotated(rs->repo->libRepository, checkoutTarget);
         if (operationError) {
             ctx.applicationLogger->error("Failed while detaching HEAD.");
             ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
         }
 
-        return false;
+        return;
     }
 
     const char *targetHead;
-    if (git_reference_lookup(&ref, repo->libRepository, git_annotated_commit_ref(checkoutTarget))) {
+    if (git_reference_lookup(&ref, rs->repo->libRepository, git_annotated_commit_ref(checkoutTarget))) {
         ctx.applicationLogger->error("Failed while looking up {}.", git_annotated_commit_ref(checkoutTarget));
         ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
 
         git_reference_free(ref);
 
-        return false;
+        return;
     }
 
     git_reference* branch = NULL;
     if (git_reference_is_remote(ref)) {
-        if (git_branch_create_from_annotated(&branch, repo->libRepository, tagCStr, checkoutTarget, 0)) {
+        if (git_branch_create_from_annotated(&branch, rs->repo->libRepository, tagCStr, checkoutTarget, 0)) {
             ctx.applicationLogger->error("Failed while creating branch from reference {}.",
                                          git_annotated_commit_ref(checkoutTarget));
             ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
 
             git_reference_free(ref);
 
-            return false;
+            return;
         }
 
         targetHead = git_reference_name(branch);
@@ -141,7 +159,7 @@ bool Checkout(application_context& ctx, repository* repo, std::string tag) {
         targetHead = git_annotated_commit_ref(checkoutTarget);
     }
 
-    operationError = git_repository_set_head(repo->libRepository, targetHead);
+    operationError = git_repository_set_head(rs->repo->libRepository, targetHead);
     git_commit_free(targetCommit);
     git_reference_free(ref);
     git_reference_free(branch);
@@ -150,34 +168,37 @@ bool Checkout(application_context& ctx, repository* repo, std::string tag) {
         ctx.applicationLogger->error("Failed while setting HEAD {}.", targetHead);
         ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
 
-        return false;
+        return;
     }
 
-    return true;
+    rs->tag = tag;
+    rs->resolutionSuccessful = true;
 }
 
 
-bool CloneAndCheckout(application_context& ctx, std::string remoteUrl, std::string path, std::string tag) {
+resolution_result* CloneAndCheckout(application_context& ctx, std::string remoteUrl, std::string path, std::string tag) {
+    resolution_result* resolutionResult = NULL;
     if (!InitializeLibrary(ctx)) {
-        return false;
+        return resolutionResult;
     }
 
-    repository* repo = CloneRepo(ctx, remoteUrl, path);
-    if (!repo) {
+    resolutionResult = CloneRepo(ctx, remoteUrl, path);
+    if (!resolutionResult || !resolutionResult->resolutionSuccessful) {
         ctx.userLogger->error("Could not clone repo \"{}\" to \"{}\", aborting", remoteUrl, path);
-        return false;
+        return resolutionResult;
     }
 
-    if (!Checkout(ctx, repo, tag)) {
-        ctx.userLogger->error("Could not checkout tag {} for {}, aborting", tag, path);
+    Checkout(ctx, resolutionResult, tag);
+    if (!resolutionResult->resolutionSuccessful) {
+        ctx.userLogger->error("Could not checkout tag \"{}\" for \"{}\", aborting", tag, path);
         // cleanup after clone, so that we can retry this cleanly on the next run.
         utils::DeleteDirAndContents(ctx, path);  // FIXME catch error result
 
-        return false;
+        return resolutionResult;
     }
 
     ShutdownLibrary(ctx);
 
-    return true;
+    return resolutionResult;
 }
 

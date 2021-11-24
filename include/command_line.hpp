@@ -15,7 +15,9 @@ struct execution_arguments {
     clipp::group* cli;
 
     mode currentMode;
+
     std::string configurationFilePath;
+    std::string lockFilePath;
 };
 
 

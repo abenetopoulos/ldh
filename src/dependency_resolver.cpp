@@ -4,7 +4,7 @@
 #include "git_lib.cpp"
 
 
-bool ResolveGitDependency(application_context& ctx, dependency* dep) {
+resolution_result* ResolveGitDependency(application_context& ctx, dependency* dep) {
     ctx.applicationLogger->info("Proceeding to resolve git dependency \"{}\"", dep->name);
 
     /* Steps
@@ -28,33 +28,47 @@ bool ResolveGitDependency(application_context& ctx, dependency* dep) {
     targetDirectoryPathStream << ctx.dependencyPathPrefix << targetDirectoryName;
     std::string targetDirectoryPath = targetDirectoryPathStream.str();
 
-    ctx.applicationLogger->debug("Dependency working directory is \"{}\"", targetDirectoryPath);
+    ctx.applicationLogger->info("Dependency working directory is \"{}\"", targetDirectoryPath);
 
+    resolution_result* resolutionResult = NULL;
     if (utils::DirectoryExists(targetDirectoryPath)) {
-        ctx.applicationLogger->debug("Dependency \"{}\" already resolved, skipping.", targetDirectoryName);
+        ctx.applicationLogger->info("Dependency \"{}\" already resolved, skipping.", targetDirectoryName);
 
-        return true;
+        return resolutionResult;
     }
 
-    bool resolutionSuccessful = false;
     switch (dep->inputDependency.versionType) {
         case (version_type::VERSION_TYPE_DEFAULT):
             {
-                resolutionSuccessful = CloneRepo(ctx, dep->inputDependency.source, targetDirectoryPath);
+                resolutionResult = CloneRepo(ctx, dep->inputDependency.source, targetDirectoryPath);
                 break;
             }
         default:
             {
-                resolutionSuccessful = CloneAndCheckout(ctx, dep->inputDependency.source, targetDirectoryPath, dep->inputDependency.version);
+                resolutionResult = CloneAndCheckout(ctx, dep->inputDependency.source, targetDirectoryPath, dep->inputDependency.version);
                 break;
             }
     }
 
-    if (!resolutionSuccessful) {
+    if (!resolutionResult || !resolutionResult->resolutionSuccessful) {
         ctx.userLogger->warn("Could not resolve git dependency \"{}\"", dep->name);
     }
 
-    return resolutionSuccessful;
+    return resolutionResult;
+}
+
+
+void UpdateResolvedDependency(dependency* dep, resolution_result* resolutionResult) {
+    lock_dependency* dependencyToUpdate = &dep->lockDependency;
+
+    dependencyToUpdate->localPath = resolutionResult->localPath;
+    dependencyToUpdate->resolvedVersion = resolutionResult->version;
+
+    std::ostringstream resolvedSourceStream;
+    resolvedSourceStream << SourceTypeToString(dep->inputDependency.sourceType) << '+';
+    resolvedSourceStream << dep->inputDependency.source << '#';
+    resolvedSourceStream << (resolutionResult->tag.empty() ? resolutionResult->version : resolutionResult->tag);
+    dependencyToUpdate->resolvedSource = resolvedSourceStream.str();
 }
 
 
@@ -69,10 +83,12 @@ bool Resolve(application_context& ctx, dependency* dep) {
         return false;
     }
 
+    resolution_result* resolutionResult = NULL;
     switch (dep->inputDependency.sourceType) {
         case (source_type::SOURCE_TYPE_GIT):
             {
-                return ResolveGitDependency(ctx, dep);
+                resolutionResult = ResolveGitDependency(ctx, dep);
+                break;
             }
         default:
             {
@@ -81,5 +97,22 @@ bool Resolve(application_context& ctx, dependency* dep) {
             }
     }
 
-    return false;
+
+    if (!resolutionResult || !resolutionResult->resolutionSuccessful) {
+        return false;
+    }
+
+    UpdateResolvedDependency(dep, resolutionResult);
+    return true;
 }
+
+
+vector<dependency*>* FilterUnmodified(application_context& ctx, vector<dependency*>& dependencies) {
+    // TODO this will probably need to be a bit richer than just a vector of dependencies. Maybe some
+    // struct that lets us know why it's considered modified (`NEW`, `UPDATED_VERSION`, etc.), and some extra
+    // flags telling us all the actions we need to take.
+    vector<dependency*>* modifiedDependencies = new vector<dependency*>();
+
+    return modifiedDependencies;
+}
+
