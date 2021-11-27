@@ -194,6 +194,7 @@ void Checkout(application_context& ctx, resolution_result* rs, std::string tag) 
     GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "setting HEAD", operationError, EMPTY());
 
     rs->tag = tag;
+    rs->version = GetHeadId(ctx, rs->repo->libRepository);
     rs->resolutionSuccessful = true;
 }
 
