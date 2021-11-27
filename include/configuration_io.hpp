@@ -26,6 +26,14 @@ configuration_modes operator |(configuration_modes lhs, configuration_modes rhs)
 }
 
 
+configuration_modes operator &(configuration_modes lhs, configuration_modes rhs) {
+    return static_cast<configuration_modes> (
+        static_cast<std::underlying_type<configuration_modes>::type>(lhs) &
+        static_cast<std::underlying_type<configuration_modes>::type>(rhs)
+    );
+}
+
+
 struct configuration {
     package_information packageInformation;
     vector<dependency*> dependencies;

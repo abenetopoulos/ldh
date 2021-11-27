@@ -73,6 +73,17 @@ configuration* ParseConfiguration(application_context& ctx, string& configuratio
     dict_like_config configurationDict = toml::parse_file(configurationFilePath);
     configuration* parsedConfiguration = configuration::FromDictLike(configurationDict);
 
+    if ((mode & configuration_modes::CONFIGURATION_MODE_OUTPUT) != configuration_modes::CONFIGURATION_MODE_NONE) {
+        dict_like_config lockFileDict = toml::parse_file(ctx.GetLockFilePath());
+
+        /* TODO Steps:
+         * 1) translate all entries to lock_dependency instances
+         * 2) iterate over lock dependencies, foreach lockDep iterate over left over parsedConfiguration->dependencies, dep
+         *  a) if dep matches lockDep (lockDep.name == gen_name(dep)), then update dep's lockDependency entry, go to next
+         *  b) if lockDep does not match any entries, append new dependency to list in order to be handled
+         */
+    }
+
     return parsedConfiguration;
 }
 
@@ -96,7 +107,7 @@ bool CheckConfiguration(application_context& ctx, configuration* config, configu
 
 
 configuration* ParseAndCheckConfiguration(application_context& ctx, string& configurationFilePath, configuration_modes mode) {
-    auto config = ParseConfiguration(ctx, configurationFilePath, mode);
+    configuration* config = ParseConfiguration(ctx, configurationFilePath, mode);
 
     if (!config) {
         ctx.applicationLogger->error("Could not parse config from input \"{}\"", configurationFilePath);

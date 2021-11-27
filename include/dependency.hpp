@@ -46,6 +46,10 @@ struct input_dependency {
 
     version_type versionType;
     string version;
+
+    bool has_value() {
+        return !(this->source.empty() && this->version.empty());
+    }
 };
 
 
@@ -63,6 +67,9 @@ struct lock_dependency {
 struct dependency {
     string name;
 
+    // previously handled/resolved dependencies should have non-empty values for both input and output dependency
+    // dependencies that were newly added should only contain a non-empty input dependency
+    // dependencies that should be removed will only have a lock dependency entry
     input_dependency inputDependency;
     lock_dependency lockDependency;
 };
