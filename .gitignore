@@ -6,3 +6,4 @@ include/git2.h
 include/git2
 include/spdlog
 include/toml.hpp
+test/**/*.lock
