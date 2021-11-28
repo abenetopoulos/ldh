@@ -1,5 +1,6 @@
 #include "git_lib.hpp"
 
+
 bool InitializeLibrary(application_context& ctx) {
     if (git_libgit2_init() < 0) {
         ctx.applicationLogger->error("Could not initialize libgit2.");
@@ -34,7 +35,7 @@ string GetHeadId(application_context& ctx, git_repository* repo) {
 }
 
 
-resolution_result* CloneRepo(application_context& ctx, std::string remoteUrl, std::string path) {
+resolution_result* CloneRepo(application_context& ctx, string remoteUrl, string path) {
     resolution_result* rs = new resolution_result(false);
     rs->localPath = path;
     rs->remote = remoteUrl;
@@ -130,7 +131,17 @@ git_annotated_commit* ResolveReference(application_context& ctx, git_repository*
 }
 
 
-void Checkout(application_context& ctx, resolution_result* rs, std::string tag) {
+git_repository* GetGitRepositoryAtPath(application_context& ctx, string path) {
+    git_repository* repo = NULL;
+
+    int operationError = git_repository_open(&repo, path.c_str());
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "repository open", operationError, NULL);
+
+    return repo;
+}
+
+
+void Checkout(application_context& ctx, resolution_result* rs, string tag) {
     // TODO repo consistency checks.
     ctx.applicationLogger->info("Attempting to checkout tag \"{}\" for \"{}\"", tag, rs->repo->path);
 
@@ -199,7 +210,7 @@ void Checkout(application_context& ctx, resolution_result* rs, std::string tag) 
 }
 
 
-resolution_result* CloneAndCheckout(application_context& ctx, std::string remoteUrl, std::string path, std::string tag) {
+resolution_result* CloneAndCheckout(application_context& ctx, string remoteUrl, string path, string tag) {
     resolution_result* resolutionResult = NULL;
     if (!InitializeLibrary(ctx)) {
         return resolutionResult;
@@ -225,3 +236,25 @@ resolution_result* CloneAndCheckout(application_context& ctx, std::string remote
     return resolutionResult;
 }
 
+
+resolution_result* CreateResolutionResultFromLocalGitRepo(application_context& ctx, string remoteUrl, string path, string tag) {
+    InitializeLibrary(ctx);
+    resolution_result* rs = new resolution_result(true);
+
+    git_repository* libRepository = GetGitRepositoryAtPath(ctx, path);
+    if (!libRepository) {
+        rs->resolutionSuccessful = false;
+
+        return rs;
+    }
+
+    rs->repo = new repository(libRepository, path);
+    rs->localPath = path;
+    rs->remote = remoteUrl;
+
+    rs->version = GetHeadId(ctx, rs->repo->libRepository);
+    rs->tag = tag;
+
+    ShutdownLibrary(ctx);
+    return rs;
+}

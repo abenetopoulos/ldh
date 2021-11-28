@@ -9,7 +9,7 @@
 #include "configuration_io.hpp"
 #include "utils.hpp"
 
-bool Resolve(application_context&, dependency*);
+void ResolveDependencies(application_context&, vector<dependency*>);
 vector<dependency*>* FilterUnmodified(application_context&, vector<dependency*>&);
 
 #define DEPENDENCY_RESOLVER_H

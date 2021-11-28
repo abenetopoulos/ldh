@@ -68,11 +68,7 @@ int main(int argc, char* argv[]) {
     ctx->applicationLogger->info("will resolve");
     // vector<dependency*>* dependenciesToResolve = FilterUnmodified(*ctx, config->dependencies);
     vector<dependency*>* dependenciesToResolve = &config->dependencies;
-    for (dependency* dep: *dependenciesToResolve) {
-        if (!Resolve(*ctx, dep)) {
-            ctx->applicationLogger->warn("Resolution of \"{}\" failed.", dep->name);
-        }
-    }
+    ResolveDependencies(*ctx, *dependenciesToResolve);
 
     if (!WriteConfiguration(*ctx, ctx->args->lockFilePath, config)) {
         ctx->applicationLogger->error("Failed while writing lock file to \"{}\"", ctx->args->lockFilePath);

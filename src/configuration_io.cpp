@@ -63,6 +63,40 @@ void configuration::ParseDependenciesSection(section dependenciesSection) {
 }
 
 
+void ReconcileConfigurationAndLock(application_context& ctx, configuration* configuration, dict_like_config lockFileDict) {
+    for (auto&& entry: *(lockFileDict["packages"]).as_array()) {
+        lock_dependency lockDependency;
+
+        auto tbl = entry.as_table();
+        lockDependency.localPath = (*tbl)["path"].value_or("");
+        lockDependency.resolvedSource = (*tbl)["source"].value_or("");
+        lockDependency.resolvedVersion = (*tbl)["version"].value_or("");
+
+        string lockDependencyName = (*tbl)["name"].value_or("");
+
+        bool matched = false;
+        for (dependency* dep: configuration->dependencies) {
+            string fullDependencyName = dep->name + "-" + dep->inputDependency.version;
+            if (dep->name != lockDependencyName || lockDependency.localPath.find(fullDependencyName) == string::npos) {
+                continue;
+            }
+
+            dep->lockDependency = lockDependency;
+            matched = true;
+        }
+
+        if (matched) {
+            continue;
+        }
+
+        dependency* dependencyToBeDeleted = new dependency();
+        dependencyToBeDeleted->lockDependency = lockDependency;
+
+        ctx.applicationLogger->debug("Will delete {} (present in lock, not in config)", lockDependencyName);
+    }
+}
+
+
 configuration* ParseConfiguration(application_context& ctx, string& configurationFilePath, configuration_modes mode) {
     if (!fs::exists(configurationFilePath)) {
         ctx.applicationLogger->error("File not found: \"{}\"", configurationFilePath);
@@ -75,6 +109,7 @@ configuration* ParseConfiguration(application_context& ctx, string& configuratio
 
     if ((mode & configuration_modes::CONFIGURATION_MODE_OUTPUT) != configuration_modes::CONFIGURATION_MODE_NONE) {
         dict_like_config lockFileDict = toml::parse_file(ctx.GetLockFilePath());
+        ReconcileConfigurationAndLock(ctx, parsedConfiguration, lockFileDict);
 
         /* TODO Steps:
          * 1) translate all entries to lock_dependency instances
@@ -135,6 +170,7 @@ toml::table DependencyToTable(dependency* dep) {
     result.insert("name", dep->name);
     result.insert("version", dep->lockDependency.resolvedVersion);
     result.insert("source", dep->lockDependency.resolvedSource);
+    result.insert("path", dep->lockDependency.localPath);
 
     return result;
 }

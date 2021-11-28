@@ -14,29 +14,34 @@
 
 struct repository {
     git_repository* libRepository;
-    std::string path;
+    string path;
 
-    repository(git_repository* r, std::string p): libRepository(r), path(p) {}
+    repository(git_repository* r, string p): libRepository(r), path(p) {}
 };
 
 
 struct resolution_result {
+    // NOTE this is in this file just for convenience. Ideally, once we add more types of
+    // resolvers, this will move to a shared file.
     bool resolutionSuccessful;
 
     repository* repo;
 
-    std::string localPath;
-    std::string remote;
+    string localPath;
+    string remote;
 
-    std::string version;
-    std::string tag;
+    string version;
+    string tag;
 
     resolution_result(bool rs): resolutionSuccessful(rs) { }
 };
 
 
-resolution_result* CloneRepo(application_context& ctx, std::string remoteUrl, std::string path);
-resolution_result* CloneAndCheckout(application_context& ctx, std::string remoteUrl, std::string path, std::string tag);
+
+resolution_result* CloneRepo(application_context&, string, string);
+resolution_result* CloneAndCheckout(application_context&, string, string, string);
+
+resolution_result* CreateResolutionResultFromLocalGitRepo(application_context&, string, string, string);
 
 #define GIT_LIB_H
 #endif

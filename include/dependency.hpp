@@ -47,7 +47,7 @@ struct input_dependency {
     version_type versionType;
     string version;
 
-    bool has_value() {
+    bool HasValue() {
         return !(this->source.empty() && this->version.empty());
     }
 };
@@ -58,7 +58,7 @@ struct lock_dependency {
     string resolvedSource;
     string resolvedVersion;
 
-    bool has_value() {
+    bool HasValue() {
         return !(this->localPath.empty() && this->resolvedSource.empty() && this->resolvedVersion.empty());
     }
 };

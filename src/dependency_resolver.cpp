@@ -34,7 +34,8 @@ resolution_result* ResolveGitDependency(application_context& ctx, dependency* de
     if (utils::DirectoryExists(targetDirectoryPath)) {
         ctx.applicationLogger->info("Dependency \"{}\" already resolved, skipping.", targetDirectoryName);
 
-        return resolutionResult;
+        return CreateResolutionResultFromLocalGitRepo(ctx, dep->inputDependency.source, targetDirectoryPath,
+                                                      dep->inputDependency.version);
     }
 
     switch (dep->inputDependency.versionType) {
@@ -72,7 +73,7 @@ void UpdateResolvedDependency(dependency* dep, resolution_result* resolutionResu
 }
 
 
-bool Resolve(application_context& ctx, dependency* dep) {
+bool FetchRemoteDependency(application_context& ctx, dependency* dep) {
     bool directoryCreationSuccessful = utils::MakeDirs(ctx, ctx.dependencyPathPrefix,
                                                        utils::directory_creation_mode::IGNORE_IF_EXISTS);
 
@@ -103,16 +104,46 @@ bool Resolve(application_context& ctx, dependency* dep) {
     }
 
     UpdateResolvedDependency(dep, resolutionResult);
+
+    delete resolutionResult;
+
     return true;
 }
 
 
-vector<dependency*>* FilterUnmodified(application_context& ctx, vector<dependency*>& dependencies) {
-    // TODO this will probably need to be a bit richer than just a vector of dependencies. Maybe some
-    // struct that lets us know why it's considered modified (`NEW`, `UPDATED_VERSION`, etc.), and some extra
-    // flags telling us all the actions we need to take.
-    vector<dependency*>* modifiedDependencies = new vector<dependency*>();
+bool DeleteDependency(application_context& ctx, dependency* dep) {
+    string localPath = dep->lockDependency.localPath;
 
-    return modifiedDependencies;
+    bool directoryDeletionSuccessful = utils::DeleteDirAndContents(ctx, localPath);
+    if (!directoryDeletionSuccessful) {
+        ctx.applicationLogger->error("Could not delete dependency at path \"{}\"", localPath);
+        return false;
+    }
+
+    return true;
 }
 
+
+void ResolveDependencies(application_context& ctx, vector<dependency*> dependencies) {
+    for (vector<dependency*>::iterator i = dependencies.begin(); i != dependencies.end(); i++) {
+        dependency* dep = *i;
+        bool resolutionSuccessful = false;
+
+        if (!dep->inputDependency.HasValue()) {
+            resolutionSuccessful = DeleteDependency(ctx, dep);
+
+            if (resolutionSuccessful) {
+                // FIXME I think it makes sense to only remove from the lock file if we _actually_ managed
+                // to delete the dependency's local contents, but I might be wrong...
+                dependencies.erase(i);
+                delete dep;
+            }
+        } else {
+            resolutionSuccessful = FetchRemoteDependency(ctx, dep);
+        }
+
+        if (!resolutionSuccessful) {
+            ctx.applicationLogger->warn("Resolution of \"{}\" failed.", dep->name);
+        }
+    }
+}
