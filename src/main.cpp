@@ -18,10 +18,25 @@ void PrintManPage(application_context& ctx) {
 }
 
 
+string GenerateLockFilePath(string configurationFilePath) {  // FIXME move somewhere else
+    string sourceString = configurationFilePath;
+    size_t substringIndex = 0;
+    size_t lastIndex = 0;
+
+    // locate index of last backslash
+    // NOTE this is platform dependent.
+    while ((substringIndex = sourceString.find('/', substringIndex)) != string::npos) {
+        lastIndex = substringIndex++;
+    }
+
+    return sourceString.replace(sourceString.begin() + lastIndex, sourceString.end(), "/ldh.lock");
+}
+
+
 int main(int argc, char* argv[]) {
     application_context* ctx = new application_context();
 
-    ctx->binaryName = std::string(argv[0]);
+    ctx->binaryName = string(argv[0]);
     ctx->applicationLogger = logger_manager::GetInstance()->GetLogger(APPLICATION_LOGGER_NAME);
     ctx->userLogger = logger_manager::GetInstance()->GetLogger(USER_LOGGER_NAME);
 
@@ -37,18 +52,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (ctx->args->lockFilePath.empty()) {
-        // FIXME move somewhere else
-        std::string sourceString = ctx->args->configurationFilePath;
-        size_t substringIndex = 0;
-        size_t lastIndex = 0;
-
-        // locate index of last backslash
-        // NOTE this is platform dependent.
-        while ((substringIndex = sourceString.find('/', substringIndex)) != string::npos) {
-            lastIndex = substringIndex++;
-        }
-
-        ctx->args->lockFilePath = sourceString.replace(sourceString.begin() + lastIndex, sourceString.end(), "/ldh.lock");
+        ctx->args->lockFilePath = GenerateLockFilePath(ctx->args->configurationFilePath);
     }
 
     configuration_modes mode = configuration_modes::CONFIGURATION_MODE_INPUT | (
