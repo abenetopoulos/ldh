@@ -2,7 +2,7 @@
 
 #include "application_context.hpp"
 #include "command_line.cpp"
-#include "configuration_parser.cpp"
+#include "configuration_io.cpp"
 #include "dependency_resolver.cpp"
 #include "logger_manager.hpp"
 #include "spdlog/spdlog.h"
@@ -18,10 +18,25 @@ void PrintManPage(application_context& ctx) {
 }
 
 
+string GenerateLockFilePath(string configurationFilePath) {  // FIXME move somewhere else
+    string sourceString = configurationFilePath;
+    size_t substringIndex = 0;
+    size_t lastIndex = 0;
+
+    // locate index of last backslash
+    // NOTE this is platform dependent.
+    while ((substringIndex = sourceString.find('/', substringIndex)) != string::npos) {
+        lastIndex = substringIndex++;
+    }
+
+    return sourceString.replace(sourceString.begin() + lastIndex, sourceString.end(), "/ldh.lock");
+}
+
+
 int main(int argc, char* argv[]) {
     application_context* ctx = new application_context();
 
-    ctx->binaryName = std::string(argv[0]);
+    ctx->binaryName = string(argv[0]);
     ctx->applicationLogger = logger_manager::GetInstance()->GetLogger(APPLICATION_LOGGER_NAME);
     ctx->userLogger = logger_manager::GetInstance()->GetLogger(USER_LOGGER_NAME);
 
@@ -33,20 +48,32 @@ int main(int argc, char* argv[]) {
 
     if (ctx->args->currentMode == mode::MODE_HELP) {
         PrintManPage(*ctx);
-        return 1;
+        return 0;
     }
 
-    configuration* config = ParseAndCheckConfiguration(*ctx, ctx->args->configurationFilePath);
+    if (ctx->args->lockFilePath.empty()) {
+        ctx->args->lockFilePath = GenerateLockFilePath(ctx->args->configurationFilePath);
+    }
+
+    configuration_modes mode = configuration_modes::CONFIGURATION_MODE_INPUT | (
+            ctx->args->currentMode == mode::MODE_VALIDATE ? configuration_modes::CONFIGURATION_MODE_NONE : configuration_modes::CONFIGURATION_MODE_OUTPUT );
+
+    configuration* config = ParseAndCheckConfiguration(*ctx, ctx->args->configurationFilePath, mode);
     assert(config);
 
     if (ctx->args->currentMode == mode::MODE_VALIDATE) {
         return 0;
     }
 
-    for (dependency* dep: config->dependencies) {
-        if (!Resolve(*ctx, dep)) {
-            ctx->applicationLogger->warn("Resolution of \"{}\" failed.", dep->name);
-        }
+    ctx->applicationLogger->info("will resolve");
+    // vector<dependency*>* dependenciesToResolve = FilterUnmodified(*ctx, config->dependencies);
+    vector<dependency*>* dependenciesToResolve = &config->dependencies;
+    ResolveDependencies(*ctx, *dependenciesToResolve);
+
+    if (!WriteConfiguration(*ctx, ctx->args->lockFilePath, config)) {
+        ctx->applicationLogger->error("Failed while writing lock file to \"{}\"", ctx->args->lockFilePath);
+
+        return 1;
     }
 
     return 0;

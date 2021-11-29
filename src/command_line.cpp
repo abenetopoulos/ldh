@@ -19,18 +19,20 @@ bool ParseExecutionArguments(execution_arguments* args, int argc, char* argv[]) 
     args->currentMode = mode::MODE_HELP;
 
     clipp::parameter helpMode = clipp::command("help").set(args->currentMode, mode::MODE_HELP);
-    clipp::parameter filename = clipp::value("fname",
+    clipp::parameter configurationFilePath = clipp::value("fname",
                                          args->configurationFilePath).if_missing([]{
                                              std::cout << "A configuration file is required\n";
                                          } );
+    clipp::group lockFilePath = (
+            clipp::option("-o") & clipp::value("ofname", args->lockFilePath) );
 
     clipp::group validateMode = (
             clipp::command("validate").set(args->currentMode, mode::MODE_VALIDATE),
-            filename );
+            configurationFilePath );
 
     clipp::group updateMode = (
             clipp::command("update").set(args->currentMode, mode::MODE_UPDATE),
-            filename );
+            configurationFilePath, lockFilePath );
 
     args->cli = new clipp::group();
     *args->cli = validateMode | updateMode | helpMode;

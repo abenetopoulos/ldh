@@ -1,5 +1,6 @@
 #include "git_lib.hpp"
 
+
 bool InitializeLibrary(application_context& ctx) {
     if (git_libgit2_init() < 0) {
         ctx.applicationLogger->error("Could not initialize libgit2.");
@@ -24,12 +25,26 @@ bool ShutdownLibrary(application_context& ctx) {
 }
 
 
-repository* CloneRepo(application_context& ctx, std::string remoteUrl, std::string path) {
+string GetHeadId(application_context& ctx, git_repository* repo) {
+    git_oid commitObjectId;
+
+    int libError = git_reference_name_to_id(&commitObjectId, repo, "HEAD");
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "get HEAD id", libError, "");
+
+    return git_oid_tostr_s(&commitObjectId);
+}
+
+
+resolution_result* CloneRepo(application_context& ctx, string remoteUrl, string path) {
+    resolution_result* rs = new resolution_result(false);
+    rs->localPath = path;
+    rs->remote = remoteUrl;
+
     if (!InitializeLibrary(ctx)) {
-        return NULL;
+        return rs;
     }
 
-    ctx.applicationLogger->debug("Attempting to clone from remote \"{}\" into \"{}\"", remoteUrl, path);
+    ctx.applicationLogger->info("Attempting to clone from remote \"{}\" into \"{}\"", remoteUrl, path);
 
     git_repository* out = NULL;
     int cloneError = git_clone(&out, remoteUrl.c_str(), path.c_str(), NULL);
@@ -39,101 +54,142 @@ repository* CloneRepo(application_context& ctx, std::string remoteUrl, std::stri
                               remoteUrl, path);
         ctx.userLogger->error("Reason: {}", git_error_last()->message);
 
+        return rs;
+    }
+
+    rs->repo = new repository(out, path);
+    rs->version = GetHeadId(ctx, rs->repo->libRepository);
+
+    ShutdownLibrary(ctx);
+
+    rs->resolutionSuccessful = true;
+    return rs;
+}
+
+
+git_annotated_commit* ResolveRemoteReference(application_context& ctx, git_repository* repo, const char* targetReference) {
+    git_strarray remotes = { NULL, 0 };
+    git_annotated_commit *result = NULL;
+
+    int libError = git_remote_list(&remotes, repo);
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "list remotes", libError, NULL);
+
+    git_reference *remoteReference = NULL;
+    for (unsigned int i = 0; (i < remotes.count && !remoteReference); i++) {
+        char *refname = NULL;
+
+        // figure out the "appropriate" length for `refname`
+        unsigned int reflen = snprintf(refname, 0, "refs/remotes/%s/%s", remotes.strings[i], targetReference);
+        if (reflen < 0 || !(refname = (char *) malloc(reflen + 1))) {
+            break;
+        }
+        snprintf(refname, reflen + 1, "refs/remotes/%s/%s", remotes.strings[i], targetReference);
+
+        libError = git_reference_lookup(&remoteReference, repo, refname);
+        free(refname);
+        GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "reference lookup", libError, NULL);
+    }
+    git_strarray_dispose(&remotes);
+
+    if (!remoteReference) {
         return NULL;
     }
 
-    repository *result = new repository(out, path);
-
-    ShutdownLibrary(ctx);
+    libError = git_annotated_commit_from_ref(&result, repo, remoteReference);
+    git_reference_free(remoteReference);
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "annotated commit from ref", libError, NULL);
 
     return result;
 }
 
 
-repository* GetRepositoryAtPath(std::string path) {
-    // TODO
-    return NULL;
-}
-
-
-bool Checkout(application_context& ctx, repository* repo, std::string tag) {
-    // FIXME the following is terrible from a readability perspective...
-    ctx.applicationLogger->debug("Attempting to checkout tag \"{}\" for \"{}\"", tag, repo->path);
-    // TODO repo consistency checks.
-
+git_annotated_commit* ResolveLocalReference(application_context& ctx, git_repository* repo, const char* targetReference) {
     git_reference *ref;
-    git_annotated_commit *checkoutTarget = NULL;
-    const char* tagCStr = tag.c_str();
+    git_annotated_commit *result = NULL;
 
-    int operationError = git_reference_dwim(&ref, repo->libRepository, tagCStr);
+    int operationError = git_reference_dwim(&ref, repo, targetReference);
     if (operationError) {
         git_object *obj;
-        operationError = git_revparse_single(&obj, repo->libRepository, tagCStr);
 
-        if (operationError) {
-            ctx.userLogger->error("Failed to find tag \"{}\" for repository at \"{}\"",
-                                  tag, repo->path);
+        operationError = git_revparse_single(&obj, repo, targetReference);
+        GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "find tag", operationError, NULL);
 
-            return false;
-        }
-
-        git_annotated_commit_lookup(&checkoutTarget, repo->libRepository, git_object_id(obj));
+        git_annotated_commit_lookup(&result, repo, git_object_id(obj));
         git_object_free(obj);
     } else {
-        git_annotated_commit_from_ref(&checkoutTarget, repo->libRepository, ref);
+        git_annotated_commit_from_ref(&result, repo, ref);
         git_reference_free(ref);
     }
 
+    return result;
+}
+
+
+git_annotated_commit* ResolveReference(application_context& ctx, git_repository* repo, const char* targetReference) {
+    git_annotated_commit* result = ResolveLocalReference(ctx, repo, targetReference);
+    return result ? result : ResolveRemoteReference(ctx, repo, targetReference);
+}
+
+
+git_repository* GetGitRepositoryAtPath(application_context& ctx, string path) {
+    git_repository* repo = NULL;
+
+    int operationError = git_repository_open(&repo, path.c_str());
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "repository open", operationError, NULL);
+
+    return repo;
+}
+
+
+void Checkout(application_context& ctx, resolution_result* rs, string tag) {
+    // TODO repo consistency checks.
+    ctx.applicationLogger->info("Attempting to checkout tag \"{}\" for \"{}\"", tag, rs->repo->path);
+
+    rs->resolutionSuccessful = false;
+
+    const char* tagCStr = tag.c_str();
+    git_annotated_commit *checkoutTarget = ResolveReference(ctx, rs->repo->libRepository, tagCStr);
+    if (!checkoutTarget) {
+        return;
+    }
+
     git_commit* targetCommit = NULL;
-    operationError = git_commit_lookup(&targetCommit, repo->libRepository,
+    int operationError = git_commit_lookup(&targetCommit, rs->repo->libRepository,
                                        git_annotated_commit_id(checkoutTarget));
     git_commit_free(targetCommit);
-    if (operationError) {
-        ctx.applicationLogger->error("Lookup for commit that corresponds to tag \"{}\" failed", tag);
-        ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "lookup for tag", operationError, EMPTY());
 
-        return false;
-    }
-
-    operationError = git_checkout_tree(repo->libRepository, (const git_object *) targetCommit, NULL);
-    if (operationError) {
-        ctx.userLogger->error("Failed while trying to checkout \"{}\" for repository at \"{}\"",
-                              tag, repo->path);
-        ctx.userLogger->error("Reason: {}", git_error_last()->message);
-
-        return false;
-    }
+    operationError = git_checkout_tree(rs->repo->libRepository, (const git_object *) targetCommit, NULL);
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "checkout", operationError, EMPTY());
 
     if (!git_annotated_commit_ref(checkoutTarget)) {
-        operationError = git_repository_set_head_detached_from_annotated(repo->libRepository, checkoutTarget);
-        if (operationError) {
-            ctx.applicationLogger->error("Failed while detaching HEAD.");
-            ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
-        }
-
-        return false;
+        operationError = git_repository_set_head_detached_from_annotated(rs->repo->libRepository, checkoutTarget);
+        GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "detaching HEAD", operationError, EMPTY());
     }
 
     const char *targetHead;
-    if (git_reference_lookup(&ref, repo->libRepository, git_annotated_commit_ref(checkoutTarget))) {
+    git_reference *ref;
+    operationError = git_reference_lookup(&ref, rs->repo->libRepository, git_annotated_commit_ref(checkoutTarget));
+    if (operationError) {
         ctx.applicationLogger->error("Failed while looking up {}.", git_annotated_commit_ref(checkoutTarget));
         ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
 
         git_reference_free(ref);
 
-        return false;
+        return;
     }
 
     git_reference* branch = NULL;
     if (git_reference_is_remote(ref)) {
-        if (git_branch_create_from_annotated(&branch, repo->libRepository, tagCStr, checkoutTarget, 0)) {
+        operationError = git_branch_create_from_annotated(&branch, rs->repo->libRepository, tagCStr, checkoutTarget, 0);
+        if (operationError) {
             ctx.applicationLogger->error("Failed while creating branch from reference {}.",
                                          git_annotated_commit_ref(checkoutTarget));
             ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
 
             git_reference_free(ref);
 
-            return false;
+            return;
         }
 
         targetHead = git_reference_name(branch);
@@ -141,43 +197,64 @@ bool Checkout(application_context& ctx, repository* repo, std::string tag) {
         targetHead = git_annotated_commit_ref(checkoutTarget);
     }
 
-    operationError = git_repository_set_head(repo->libRepository, targetHead);
+    operationError = git_repository_set_head(rs->repo->libRepository, targetHead);
     git_commit_free(targetCommit);
     git_reference_free(ref);
     git_reference_free(branch);
 
-    if (operationError) {
-        ctx.applicationLogger->error("Failed while setting HEAD {}.", targetHead);
-        ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "setting HEAD", operationError, EMPTY());
 
-        return false;
-    }
-
-    return true;
+    rs->tag = tag;
+    rs->version = GetHeadId(ctx, rs->repo->libRepository);
+    rs->resolutionSuccessful = true;
 }
 
 
-bool CloneAndCheckout(application_context& ctx, std::string remoteUrl, std::string path, std::string tag) {
+resolution_result* CloneAndCheckout(application_context& ctx, string remoteUrl, string path, string tag) {
+    resolution_result* resolutionResult = NULL;
     if (!InitializeLibrary(ctx)) {
-        return false;
+        return resolutionResult;
     }
 
-    repository* repo = CloneRepo(ctx, remoteUrl, path);
-    if (!repo) {
+    resolutionResult = CloneRepo(ctx, remoteUrl, path);
+    if (!resolutionResult || !resolutionResult->resolutionSuccessful) {
         ctx.userLogger->error("Could not clone repo \"{}\" to \"{}\", aborting", remoteUrl, path);
-        return false;
+        return resolutionResult;
     }
 
-    if (!Checkout(ctx, repo, tag)) {
-        ctx.userLogger->error("Could not checkout tag {} for {}, aborting", tag, path);
+    Checkout(ctx, resolutionResult, tag);
+    if (!resolutionResult->resolutionSuccessful) {
+        ctx.userLogger->error("Could not checkout tag \"{}\" for \"{}\", aborting", tag, path);
         // cleanup after clone, so that we can retry this cleanly on the next run.
         utils::DeleteDirAndContents(ctx, path);  // FIXME catch error result
 
-        return false;
+        return resolutionResult;
     }
 
     ShutdownLibrary(ctx);
 
-    return true;
+    return resolutionResult;
 }
 
+
+resolution_result* CreateResolutionResultFromLocalGitRepo(application_context& ctx, string remoteUrl, string path, string tag) {
+    InitializeLibrary(ctx);
+    resolution_result* rs = new resolution_result(true);
+
+    git_repository* libRepository = GetGitRepositoryAtPath(ctx, path);
+    if (!libRepository) {
+        rs->resolutionSuccessful = false;
+
+        return rs;
+    }
+
+    rs->repo = new repository(libRepository, path);
+    rs->localPath = path;
+    rs->remote = remoteUrl;
+
+    rs->version = GetHeadId(ctx, rs->repo->libRepository);
+    rs->tag = tag;
+
+    ShutdownLibrary(ctx);
+    return rs;
+}

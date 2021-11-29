@@ -4,7 +4,7 @@
 #include "git_lib.cpp"
 
 
-bool ResolveGitDependency(application_context& ctx, dependency* dep) {
+resolution_result* ResolveGitDependency(application_context& ctx, dependency* dep) {
     ctx.applicationLogger->info("Proceeding to resolve git dependency \"{}\"", dep->name);
 
     /* Steps
@@ -21,44 +21,59 @@ bool ResolveGitDependency(application_context& ctx, dependency* dep) {
     // path format is $PWD/target/dependencies/name-version
     // C++ yuck coming up
     std::ostringstream targetDirectoryNameStream;
-    targetDirectoryNameStream << dep->name << "-" << dep->version;
+    targetDirectoryNameStream << dep->name << "-" << dep->inputDependency.version;
     std::string targetDirectoryName = targetDirectoryNameStream.str();
 
     std::ostringstream targetDirectoryPathStream;
     targetDirectoryPathStream << ctx.dependencyPathPrefix << targetDirectoryName;
     std::string targetDirectoryPath = targetDirectoryPathStream.str();
 
-    ctx.applicationLogger->debug("Dependency working directory is \"{}\"", targetDirectoryPath);
+    ctx.applicationLogger->info("Dependency working directory is \"{}\"", targetDirectoryPath);
 
+    resolution_result* resolutionResult = NULL;
     if (utils::DirectoryExists(targetDirectoryPath)) {
-        ctx.applicationLogger->debug("Dependency \"{}\" already resolved, skipping.", targetDirectoryName);
+        ctx.applicationLogger->info("Dependency \"{}\" already resolved, skipping.", targetDirectoryName);
 
-        return true;
+        return CreateResolutionResultFromLocalGitRepo(ctx, dep->inputDependency.source, targetDirectoryPath,
+                                                      dep->inputDependency.version);
     }
 
-    bool resolutionSuccessful = false;
-    switch (dep->versionType) {
+    switch (dep->inputDependency.versionType) {
         case (version_type::VERSION_TYPE_DEFAULT):
             {
-                resolutionSuccessful = CloneRepo(ctx, dep->source, targetDirectoryPath);
+                resolutionResult = CloneRepo(ctx, dep->inputDependency.source, targetDirectoryPath);
                 break;
             }
         default:
             {
-                resolutionSuccessful = CloneAndCheckout(ctx, dep->source, targetDirectoryPath, dep->version);
+                resolutionResult = CloneAndCheckout(ctx, dep->inputDependency.source, targetDirectoryPath, dep->inputDependency.version);
                 break;
             }
     }
 
-    if (!resolutionSuccessful) {
+    if (!resolutionResult || !resolutionResult->resolutionSuccessful) {
         ctx.userLogger->warn("Could not resolve git dependency \"{}\"", dep->name);
     }
 
-    return resolutionSuccessful;
+    return resolutionResult;
 }
 
 
-bool Resolve(application_context& ctx, dependency* dep) {
+void UpdateResolvedDependency(dependency* dep, resolution_result* resolutionResult) {
+    lock_dependency* dependencyToUpdate = &dep->lockDependency;
+
+    dependencyToUpdate->localPath = resolutionResult->localPath;
+    dependencyToUpdate->resolvedVersion = resolutionResult->version;
+
+    std::ostringstream resolvedSourceStream;
+    resolvedSourceStream << SourceTypeToString(dep->inputDependency.sourceType) << '+';
+    resolvedSourceStream << dep->inputDependency.source << '#';
+    resolvedSourceStream << (resolutionResult->tag.empty() ? resolutionResult->version : resolutionResult->tag);
+    dependencyToUpdate->resolvedSource = resolvedSourceStream.str();
+}
+
+
+bool FetchRemoteDependency(application_context& ctx, dependency* dep) {
     bool directoryCreationSuccessful = utils::MakeDirs(ctx, ctx.dependencyPathPrefix,
                                                        utils::directory_creation_mode::IGNORE_IF_EXISTS);
 
@@ -69,17 +84,66 @@ bool Resolve(application_context& ctx, dependency* dep) {
         return false;
     }
 
-    switch (dep->sourceType) {
+    resolution_result* resolutionResult = NULL;
+    switch (dep->inputDependency.sourceType) {
         case (source_type::SOURCE_TYPE_GIT):
             {
-                return ResolveGitDependency(ctx, dep);
+                resolutionResult = ResolveGitDependency(ctx, dep);
+                break;
             }
         default:
             {
-                ctx.applicationLogger->warn("Unsupported source type {}, ignoring.", dep->sourceType);
+                ctx.applicationLogger->warn("Unsupported source type {}, ignoring.", dep->inputDependency.sourceType);
                 break;
             }
     }
 
-    return false;
+
+    if (!resolutionResult || !resolutionResult->resolutionSuccessful) {
+        return false;
+    }
+
+    UpdateResolvedDependency(dep, resolutionResult);
+
+    delete resolutionResult;
+
+    return true;
+}
+
+
+bool DeleteDependency(application_context& ctx, dependency* dep) {
+    string localPath = dep->lockDependency.localPath;
+
+    bool directoryDeletionSuccessful = utils::DeleteDirAndContents(ctx, localPath);
+    if (!directoryDeletionSuccessful) {
+        ctx.applicationLogger->error("Could not delete dependency at path \"{}\"", localPath);
+        return false;
+    }
+
+    return true;
+}
+
+
+void ResolveDependencies(application_context& ctx, vector<dependency*> dependencies) {
+    for (vector<dependency*>::iterator i = dependencies.begin(); i != dependencies.end(); i++) {
+        dependency* dep = *i;
+        bool resolutionSuccessful = false;
+
+        if (!dep->inputDependency.HasValue()) {
+            resolutionSuccessful = DeleteDependency(ctx, dep);
+
+            if (resolutionSuccessful) {
+                // FIXME I think it makes sense to only remove from the lock file if we _actually_ managed
+                // to delete the dependency's local contents, but I might be wrong...
+                dependencies.erase(i);
+                delete dep;
+            }
+        } else {
+            resolutionSuccessful = FetchRemoteDependency(ctx, dep);
+        }
+
+        if (!resolutionSuccessful) {
+            ctx.applicationLogger->warn("Resolution of \"{}\" failed.", dep->name);
+        }
+    }
 }

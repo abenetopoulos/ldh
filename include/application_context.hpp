@@ -11,6 +11,10 @@ struct application_context {
     execution_arguments* args;
 
     static const std::string dependencyPathPrefix;
+
+    std::string GetLockFilePath() {
+        return this->args->lockFilePath;
+    }
 };
 
 // C++ is not fun.
