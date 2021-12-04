@@ -5,6 +5,9 @@
       dst: "include/toml.hpp"
 - name: spdlog
   actions:
+    - type: link-file
+      src: "build/libspdlog.a"
+      dst: "libs/libspdlog.a"
     - type: link-include-dir
       src: "include/spdlog"
       dst: "include/spdlog"
