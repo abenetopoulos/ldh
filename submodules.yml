@@ -4,6 +4,13 @@
       src: "toml.hpp"
       dst: "include/toml.hpp"
 - name: spdlog
+  pre-install:
+    - "mkdir build"
+    - "cd build"
+    - "cmake .."
+    - "cmake --build ."
+  pre-remove:
+    - "rm -rf build"
   actions:
     - type: link-file
       src: "build/libspdlog.a"
@@ -23,6 +30,9 @@
     - type: link-file
       src: "build/libgit2.so"
       dst: "libs/libgit2.so"
+    - type: link-file
+      src: "build/libgit2.dylib"
+      dst: "libs/libgit2.dylib"
     - type: link-file
       src: "include/git2.h"
       dst: "include/git2.h"

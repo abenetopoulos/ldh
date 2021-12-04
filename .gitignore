@@ -1,4 +1,5 @@
 ldh
+ldh.dSYM/
 libs/
 target/
 include/clipp.h

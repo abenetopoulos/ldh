@@ -1,7 +1,13 @@
 .PHONY: release debug clean
 
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+	COMP?=g++
+else
+	COMP?=clang++
+endif
+
 STD?=c++17
-COMP?=g++
 BIN?=ldh
 
 release:
