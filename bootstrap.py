@@ -206,6 +206,7 @@ def bootstrap_project(skip_pre: bool = False, only_dependency: str = None):
     # NOTE for now, we assume that the specified submodules have been added externally, and
     # we're only concerned with fetching them.
     submodule_names = [s.get('name') for s in submodules]
+    print(submodule_names)
     repo.init_submodules(submodules=submodule_names, overwrite=False)
     repo.update_submodules(
         submodules=[s.get('name') for s in submodules],
