@@ -3,11 +3,12 @@
 Script to bootstrap the `ldh` project for development.
 
 Usage:
-    bootstrap.py [-hcs]
+    bootstrap.py [-hcs] [-o dep]
 
 Options:
   -c, --clean  Reset project to its default state.
   -s, --skip-pre  Skip all pre-install and post-remove steps.
+  -o, --only dep  Run only for the specified dependency
   -h, --help  Print this help dialog.
 """
 import enum
@@ -128,7 +129,7 @@ def parse_config(config_path: str) -> Dict[str, Union[str, Dict, List[str]]]:
     return submodules
 
 
-def reset_project(skip_pre: bool = False):
+def reset_project(skip_pre: bool = False, only_dependency: str = None):
     """This method should be the compliment of `bootstrap_project`, meaning that it should:
         - unlink all linked dependencies listed in the configuration file
         - fetches and updates all git submodules (equivalent of manually running
@@ -143,6 +144,9 @@ def reset_project(skip_pre: bool = False):
 
     for submodule in submodules:
         submodule_name = submodule.get('name')
+        if only_dependency and only_dependency != submodule_name:
+            continue
+
         logger.info(f'Processing "{submodule_name}"')
 
         cwd = os.getcwd()
@@ -182,7 +186,7 @@ def reset_project(skip_pre: bool = False):
             os.unlink(absolute_dependency_dst)
 
 
-def bootstrap_project(skip_pre: bool = False):
+def bootstrap_project(skip_pre: bool = False, only_dependency: str = None):
     """This method takes care of the following:
         - fetches and updates all git submodules (equivalent of manually running
           `git submodule update --recursive` on the top level)
@@ -211,6 +215,9 @@ def bootstrap_project(skip_pre: bool = False):
 
     for submodule in submodules:
         submodule_name = submodule.get('name')
+        if only_dependency and only_dependency != submodule_name:
+            continue
+
         logger.info(f'Processing "{submodule_name}"')
 
         cwd = os.getcwd()
@@ -256,6 +263,12 @@ def bootstrap_project(skip_pre: bool = False):
                     f'file "{absolute_dependency_dst}"'
                 )
 
+                if not os.path.isfile(absolute_dependency_src):
+                    logger.warning(
+                        f'Path "{relative_dependency_src}" does not exist, ignoring.'
+                    )
+                    continue
+
                 os.symlink(absolute_dependency_src, absolute_dependency_dst, target_is_directory=False)
             elif submodule_action_type == DependencyActionType.LINK_INCLUDE_DIR:
                 logger.info(
@@ -268,10 +281,10 @@ def bootstrap_project(skip_pre: bool = False):
 
 def main(arguments):
     if arguments.get(_RESET_FLAG, False):
-        reset_project(skip_pre=arguments.get(_SKIP_PRE_FLAG))
+        reset_project(skip_pre=arguments.get(_SKIP_PRE_FLAG), only_dependency=arguments.get('--only'))
         return
 
-    bootstrap_project(skip_pre=arguments.get(_SKIP_PRE_FLAG))
+    bootstrap_project(skip_pre=arguments.get(_SKIP_PRE_FLAG), only_dependency=arguments.get('--only'))
 
 if __name__ == '__main__':
     arguments = docopt(__doc__)

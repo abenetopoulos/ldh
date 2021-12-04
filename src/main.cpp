@@ -5,7 +5,6 @@
 #include "configuration_io.cpp"
 #include "dependency_resolver.cpp"
 #include "logger_manager.hpp"
-#include "spdlog/spdlog.h"
 
 
 void PrintUsageString(application_context& ctx) {
