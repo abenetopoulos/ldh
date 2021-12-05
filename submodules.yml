@@ -44,3 +44,8 @@
     - type: link-file
       src: "include/clipp.h"
       dst: "include/clipp.h"
+- name: semver
+  actions:
+    - type: link-file
+      src: "include/semver.hpp"
+      dst: "include/semver.hpp"

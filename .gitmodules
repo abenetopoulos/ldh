@@ -10,3 +10,6 @@
 [submodule "clipp"]
 	path = external-libs/clipp
 	url = https://github.com/muellan/clipp.git
+[submodule "semver"]
+	path = external-libs/semver
+	url = git@github.com:Neargye/semver.git

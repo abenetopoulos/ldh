@@ -112,7 +112,7 @@ git_annotated_commit* ResolveLocalReference(application_context& ctx, git_reposi
         git_object *obj;
 
         operationError = git_revparse_single(&obj, repo, targetReference);
-        GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "find tag", operationError, NULL);
+        GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "find local tag", operationError, NULL);
 
         git_annotated_commit_lookup(&result, repo, git_object_id(obj));
         git_object_free(obj);
@@ -127,7 +127,14 @@ git_annotated_commit* ResolveLocalReference(application_context& ctx, git_reposi
 
 git_annotated_commit* ResolveReference(application_context& ctx, git_repository* repo, const char* targetReference) {
     git_annotated_commit* result = ResolveLocalReference(ctx, repo, targetReference);
-    return result ? result : ResolveRemoteReference(ctx, repo, targetReference);
+    if (!result) {
+        ctx.applicationLogger->info("Failed to resolve local reference {}, looking at remote references",
+                                    targetReference);
+
+        return ResolveRemoteReference(ctx, repo, targetReference);
+    }
+
+    return result;
 }
 
 
@@ -141,7 +148,7 @@ git_repository* GetGitRepositoryAtPath(application_context& ctx, string path) {
 }
 
 
-void Checkout(application_context& ctx, resolution_result* rs, string tag) {
+void CheckoutAux(application_context& ctx, resolution_result* rs, string tag) {
     // TODO repo consistency checks.
     ctx.applicationLogger->info("Attempting to checkout tag \"{}\" for \"{}\"", tag, rs->repo->path);
 
@@ -150,12 +157,13 @@ void Checkout(application_context& ctx, resolution_result* rs, string tag) {
     const char* tagCStr = tag.c_str();
     git_annotated_commit *checkoutTarget = ResolveReference(ctx, rs->repo->libRepository, tagCStr);
     if (!checkoutTarget) {
+        InitializeLibrary(ctx);
         return;
     }
 
     git_commit* targetCommit = NULL;
     int operationError = git_commit_lookup(&targetCommit, rs->repo->libRepository,
-                                       git_annotated_commit_id(checkoutTarget));
+            git_annotated_commit_id(checkoutTarget));
     git_commit_free(targetCommit);
     GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "lookup for tag", operationError, EMPTY());
 
@@ -184,7 +192,7 @@ void Checkout(application_context& ctx, resolution_result* rs, string tag) {
         operationError = git_branch_create_from_annotated(&branch, rs->repo->libRepository, tagCStr, checkoutTarget, 0);
         if (operationError) {
             ctx.applicationLogger->error("Failed while creating branch from reference {}.",
-                                         git_annotated_commit_ref(checkoutTarget));
+                    git_annotated_commit_ref(checkoutTarget));
             ctx.applicationLogger->error("Reason: {}", git_error_last()->message);
 
             git_reference_free(ref);
@@ -210,6 +218,16 @@ void Checkout(application_context& ctx, resolution_result* rs, string tag) {
 }
 
 
+void Checkout(application_context& ctx, resolution_result* rs, string tag) {
+    InitializeLibrary(ctx);
+
+    // since C++ does not have `finally` blocks in exception handlers...
+    CheckoutAux(ctx, rs, tag);
+
+    ShutdownLibrary(ctx);
+}
+
+
 resolution_result* CloneAndCheckout(application_context& ctx, string remoteUrl, string path, string tag) {
     resolution_result* resolutionResult = NULL;
     if (!InitializeLibrary(ctx)) {
@@ -219,25 +237,24 @@ resolution_result* CloneAndCheckout(application_context& ctx, string remoteUrl, 
     resolutionResult = CloneRepo(ctx, remoteUrl, path);
     if (!resolutionResult || !resolutionResult->resolutionSuccessful) {
         ctx.userLogger->error("Could not clone repo \"{}\" to \"{}\", aborting", remoteUrl, path);
-        return resolutionResult;
+
+        GIT_LIB_SHUTDOWN_AND_RETURN(ctx, resolutionResult);
     }
 
-    Checkout(ctx, resolutionResult, tag);
+    CheckoutAux(ctx, resolutionResult, tag);
     if (!resolutionResult->resolutionSuccessful) {
         ctx.userLogger->error("Could not checkout tag \"{}\" for \"{}\", aborting", tag, path);
         // cleanup after clone, so that we can retry this cleanly on the next run.
         utils::DeleteDirAndContents(ctx, path);  // FIXME catch error result
 
-        return resolutionResult;
+        GIT_LIB_SHUTDOWN_AND_RETURN(ctx, resolutionResult);
     }
 
-    ShutdownLibrary(ctx);
-
-    return resolutionResult;
+    GIT_LIB_SHUTDOWN_AND_RETURN(ctx, resolutionResult);
 }
 
 
-resolution_result* CreateResolutionResultFromLocalGitRepo(application_context& ctx, string remoteUrl, string path, string tag) {
+resolution_result* CreateResolutionResultFromLocalGitRepo(application_context& ctx, string remoteUrl, string path, version_t& version) {
     InitializeLibrary(ctx);
     resolution_result* rs = new resolution_result(true);
 
@@ -253,8 +270,28 @@ resolution_result* CreateResolutionResultFromLocalGitRepo(application_context& c
     rs->remote = remoteUrl;
 
     rs->version = GetHeadId(ctx, rs->repo->libRepository);
-    rs->tag = tag;
+    rs->tag = version.exact;
 
     ShutdownLibrary(ctx);
     return rs;
+}
+
+
+vector<string*>* GetTagsForRepository(application_context& ctx, repository* repo) {
+    InitializeLibrary(ctx);
+
+    vector<string*>* res = new vector<string*>();
+    git_strarray tagNames;
+
+    int libError = git_tag_list(&tagNames, repo->libRepository);
+    GIT_LIB_ERROR_CHECK(ctx.applicationLogger, "get tag list", libError, NULL);
+
+    for (int i = tagNames.count - 1; i > -1; i--) {
+        res->push_back(new string(tagNames.strings[i]));
+    }
+
+    git_strarray_free(&tagNames);
+    ShutdownLibrary(ctx);
+
+    return res;
 }

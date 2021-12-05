@@ -32,30 +32,36 @@ void configuration::ParseDependenciesSection(section dependenciesSection) {
         entry->name = dependencyName;
         dependencyProperties.visit([&entry](auto& node) noexcept {
                 auto nodeTable = node.as_table();
+                input_dependency* dependency = &entry->inputDependency;
 
                 if (!nodeTable->contains("git")) {
-                    entry->inputDependency.sourceType = source_type::SOURCE_TYPE_UNKNOWN;
+                    dependency->sourceType = source_type::SOURCE_TYPE_UNKNOWN;
                     return;
                 }
 
-                entry->inputDependency.sourceType = source_type::SOURCE_TYPE_GIT;
-                entry->inputDependency.source = (*nodeTable)["git"].value_or("");
+                dependency->sourceType = source_type::SOURCE_TYPE_GIT;
+                dependency->source = (*nodeTable)["git"].value_or("");
+
+                version_t* dependencyVersion = &dependency->specifiedVersion;
 
                 string versionKey;
                 if (nodeTable->contains("branch")) {
-                    entry->inputDependency.versionType = version_type::VERSION_TYPE_BRANCH;
+                    dependencyVersion->type = version_type::VERSION_TYPE_BRANCH;
                     versionKey = "branch";
                 } else if (nodeTable->contains("tag")) {
-                    entry->inputDependency.versionType = version_type::VERSION_TYPE_TAG;
+                    dependencyVersion->type = version_type::VERSION_TYPE_TAG;
                     versionKey = "tag";
                 } else if (nodeTable->contains("commit")) {
-                    entry->inputDependency.versionType = version_type::VERSION_TYPE_COMMIT_HASH;
+                    dependencyVersion->type = version_type::VERSION_TYPE_COMMIT_HASH;
                     versionKey = "commit";
+                } else if (nodeTable->contains("version")) {
+                    dependencyVersion->type = version_type::VERSION_TYPE_SEMVER;
+                    versionKey = "version";
                 } else {
-                    entry->inputDependency.versionType = version_type::VERSION_TYPE_DEFAULT;
+                    dependencyVersion->type = version_type::VERSION_TYPE_DEFAULT;
                 }
 
-                entry->inputDependency.version = versionKey.empty() ? "latest" : (*nodeTable)[versionKey].value_or("");
+                dependencyVersion->FromString(versionKey.empty() ? "latest" : (*nodeTable)[versionKey].value_or(""));
         });
 
         this->dependencies.push_back(entry);
@@ -76,7 +82,7 @@ void ReconcileConfigurationAndLock(application_context& ctx, configuration* conf
 
         bool matched = false;
         for (dependency* dep: configuration->dependencies) {
-            string fullDependencyName = dep->name + "-" + dep->inputDependency.version;
+            string fullDependencyName = dep->name + "-" + dep->inputDependency.specifiedVersion.exact;
             if (dep->name != lockDependencyName || lockDependency.localPath.find(fullDependencyName) == string::npos) {
                 continue;
             }
@@ -108,15 +114,11 @@ configuration* ParseConfiguration(application_context& ctx, string& configuratio
     configuration* parsedConfiguration = configuration::FromDictLike(configurationDict);
 
     if ((mode & configuration_modes::CONFIGURATION_MODE_OUTPUT) != configuration_modes::CONFIGURATION_MODE_NONE) {
-        dict_like_config lockFileDict = toml::parse_file(ctx.GetLockFilePath());
-        ReconcileConfigurationAndLock(ctx, parsedConfiguration, lockFileDict);
-
-        /* TODO Steps:
-         * 1) translate all entries to lock_dependency instances
-         * 2) iterate over lock dependencies, foreach lockDep iterate over left over parsedConfiguration->dependencies, dep
-         *  a) if dep matches lockDep (lockDep.name == gen_name(dep)), then update dep's lockDependency entry, go to next
-         *  b) if lockDep does not match any entries, append new dependency to list in order to be handled
-         */
+        string lockFilePath = ctx.GetLockFilePath();
+        if (utils::FileExists(lockFilePath)) {
+            dict_like_config lockFileDict = toml::parse_file(ctx.GetLockFilePath());
+            ReconcileConfigurationAndLock(ctx, parsedConfiguration, lockFileDict);
+        }
     }
 
     return parsedConfiguration;

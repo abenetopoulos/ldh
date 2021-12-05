@@ -49,6 +49,17 @@ from the project's root directory. The `debug` variant will output an un-optimiz
 which also includes the dependencies' full source code (useful for development).
 
 
+### Current Limitations
+
+As of the time of writing this, when specifying something in semver format (using the `version` key in our TOML),
+we can only handle:
+* exact versions, like `1.2.3`
+* ranges, like `>=1.2.0 && < 2.0.0`
+
+due to limitations of the library we use for semantic version parsing and operations. Any other format should be converted
+to one of the two forms above for now.
+
+
 ## Bootstrapping
 
 To make the development process a little bit easier, a python utility called `bootstrap.py` is provided, alongside a

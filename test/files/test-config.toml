@@ -5,10 +5,13 @@ authors = ["Achilles Benetopoulos <abenetopoulos@gmail.com>"]
 
 [dependencies]
 # fetch dependency from git repo, default to repo default branch
-git-dep-default = {git = "https://github.com/test-dep"}
+git-dep-default = {git = "some-repo-here"}
+
 # fetch dependency from git repo, from specified branch
-git-dep-branch = {git = "https://github.com/test-dep", branch = "development" }
+git-dep-branch = {git = "some-repo-here", branch="some-branch-name"}
+
+# fetch dependency from git repo, specific version (specified as a SemVer range)
+git-dep-semver = {git = "some-repo-here", version=">=1.2.0"}
+
 # fetch dependency from git repo, specific tag
-git-dep-tag = {git = "https://github.com/test-dep", tag = "v0.1.0" }
-# fetch dependency from git repo, specific commit
-git-dep-commit = {git = "https://github.com/test-dep", commit = "" }
+git-dep-tag = {git = "some-repo-here", tag = "some-tag" }
