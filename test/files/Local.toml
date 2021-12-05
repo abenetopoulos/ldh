@@ -1,9 +1,0 @@
-[package]
-name = "test local git repo"
-version = "0.1.0"
-authors = ["Achilles Benetopoulos <abenetopoulos@gmail.com>"]
-
-[dependencies]
-git-dep-default = {git = "file:///home/abenetopoulos/Developer/projects/compiler"}
-git-dep-branch = {git = "file:///home/abenetopoulos/Developer/projects/compiler", branch="master"}
-# git-dep-tag = {git = "file:///home/abenetopoulos/Developer/projects/compiler", tag="v0.1"}
