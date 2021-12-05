@@ -2,6 +2,8 @@
 
 #include "git2.h"
 
+#include "dependency.hpp"
+
 // NOTE `EMPTY()` macro used for cases where we want to return from a `void` method.
 #define EMPTY()
 #define GIT_LIB_ERROR_CHECK(lgr, op, rc, rv) \
@@ -10,6 +12,10 @@
         (lgr)->error("Reason: {}", git_error_last()->message); \
         return rv; \
     }
+
+#define GIT_LIB_SHUTDOWN_AND_RETURN(ctx, val) \
+    ShutdownLibrary((ctx)); \
+    return (val);
 
 
 struct repository {
@@ -37,11 +43,12 @@ struct resolution_result {
 };
 
 
-
 resolution_result* CloneRepo(application_context&, string, string);
 resolution_result* CloneAndCheckout(application_context&, string, string, string);
 
-resolution_result* CreateResolutionResultFromLocalGitRepo(application_context&, string, string, string);
+resolution_result* CreateResolutionResultFromLocalGitRepo(application_context&, string, string, version_t&);
+
+vector<string*>* GetTagsForRepository(application_context&, repository*);
 
 #define GIT_LIB_H
 #endif

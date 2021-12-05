@@ -17,6 +17,12 @@ namespace utils {
         return std::string(fileName);
     }
 
+    bool FileExists(std::string pathStr) {
+        std::filesystem::path path = std::filesystem::path(pathStr);
+
+        return std::filesystem::exists(path);
+    }
+
     bool DirectoryExists(std::string pathStr) {
         std::filesystem::path path = std::filesystem::path(pathStr);
         if (!std::filesystem::exists(path)) {
@@ -24,6 +30,25 @@ namespace utils {
         }
 
         if (!(std::filesystem::is_directory(path) || std::filesystem::is_symlink(path))) {
+            return false;
+        }
+
+        return true;
+    }
+
+
+    bool RenameNode(application_context& ctx, std::string oldPathToNode, std::string newPathToNode) {
+        std::filesystem::path oldPath = std::filesystem::path(oldPathToNode);
+        std::filesystem::path newPath = std::filesystem::path(newPathToNode);
+
+        std::error_code nodeRenamingError;
+        std::filesystem::rename(oldPath, newPath);
+
+        if (nodeRenamingError) {
+            ctx.userLogger->error("Failed while trying to rename node \"{}\" to \"{}\"", oldPathToNode,
+                                  newPathToNode);
+            ctx.userLogger->error("Reason: {}", nodeRenamingError.message());
+
             return false;
         }
 
