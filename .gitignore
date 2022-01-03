@@ -9,3 +9,5 @@ include/spdlog
 include/toml.hpp
 include/semver.hpp
 test/**/*.lock
+
+.DS_Store
